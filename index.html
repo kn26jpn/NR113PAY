@@ -330,11 +330,17 @@
   </div>
 
   <script>
-    // ⚠️重要：ここにデプロイしたGASの「ウェブアプリURL」を貼り付けてください
+    // 固定URLインプット済み
     const GAS_URL = "https://script.google.com/macros/s/AKfycbySL67wsEswbiUJ3GVXFmC7MeNFRuq3csN8RoCiCWE4tZezgiFEmEkSUBhyIXc9Dch4/exec"; 
 
     let currentType = 'expense'; // expense or income
-    let masterData = { members: [], categories: [] };
+    
+    // GASから取得した設定マスターを保持するオブジェクト
+    let masterData = { 
+      members: [], 
+      expenseCategories: [], 
+      incomeCategories: [] 
+    };
 
     // 決済・受取方法の選択肢定義
     const methods = {
@@ -342,7 +348,7 @@
       income: ['現金', 'ポイント']
     };
 
-    // 金額文字列を数値に安全に変換する関数（カンマやスペースを自動クリア）
+    // 金額文字列を数値に安全に変換する関数
     function parseAmount(val) {
       if (typeof val === 'number') return val;
       if (!val) return 0;
@@ -362,7 +368,7 @@
       fetchInitialData();
     });
 
-    // タブ切り替え
+    // タブ切り替え制御（支出カテゴリーと収入カテゴリーの出し分け）
     function switchTab(type) {
       currentType = type;
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -372,6 +378,9 @@
       methodLabel.innerText = type === 'expense' ? '決済方法' : '受取方法';
 
       updateMethodOptions();
+      
+      const targetCategories = type === 'expense' ? masterData.expenseCategories : masterData.incomeCategories;
+      renderSelect('category', targetCategories);
     }
 
     function updateMethodOptions() {
@@ -387,20 +396,17 @@
 
     // GASから初期データを一括取得
     async function fetchInitialData() {
-      if(GAS_URL === "YOUR_GAS_WEBAPP_URL") {
-        document.getElementById('loading').innerText = "エラー：GASのURLが未設定です。";
-        return;
-      }
       try {
         const response = await fetch(GAS_URL, { method: 'GET' });
         const res = await response.json();
         
         if (res.status === 'success') {
           masterData.members = res.members;
-          masterData.categories = res.categories;
+          masterData.expenseCategories = res.expenseCategories;
+          masterData.incomeCategories = res.incomeCategories;
           
           renderSelect('member', res.members);
-          renderSelect('category', res.categories);
+          renderSelect('category', res.expenseCategories);
 
           renderDashboard(res);
           
@@ -410,7 +416,7 @@
         }
       } catch (error) {
         console.error(error);
-        alert('GASへの接続に失敗しました。CORS設定またはURLを確認してください。');
+        alert('GASへの接続に失敗しました。');
       }
     }
 
@@ -430,23 +436,21 @@
       let sumCard = 0, sumOther = 0, sumIncome = 0;
       let timelineRows = [];
 
-      // 💡クレジットカードデータの解析（新並び順に完全追従）
-      // 列構成: 0:ご利用日, 1:カテゴリー, 2:ご利用内容, 3:利用カード, 4:支払者, 5:金額
+      // クレジットカードデータの解析
       data.cardData.forEach(row => {
         const parsedAmt = parseAmount(row[5]);
         sumCard += parsedAmt;
         timelineRows.push({ 
           date: row[0], 
-          member: row[4], // 支払者
-          type: row[3] || 'クレカ', // 利用カード名
-          cat: row[1], // カテゴリー
+          member: row[4], 
+          type: row[3] || 'クレカ', 
+          cat: row[1], 
           amount: parsedAmt, 
-          desc: row[2] || '' // ご利用内容
+          desc: row[2] || '' 
         });
       });
 
       // その他支出集計
-      // 列構成: 日付, メンバー, カテゴリー, 決済方法, 金額, 詳細
       data.otherExpenseData.forEach(row => {
         const parsedAmt = parseAmount(row[4]);
         sumOther += parsedAmt;
@@ -454,7 +458,6 @@
       });
 
       // 収入集計
-      // 列構成: 日付, メンバー, カテゴリー, 受取方法, 金額, 詳細
       data.incomeData.forEach(row => {
         const parsedAmt = parseAmount(row[4]);
         sumIncome += parsedAmt;
@@ -466,7 +469,7 @@
       document.getElementById('sum-other').innerText = `¥${sumOther.toLocaleString()}`;
       document.getElementById('sum-income').innerText = `¥${sumIncome.toLocaleString()}`;
 
-      // タイムラインを日付の新しい順にソート
+      // タイムラインを最新順にソート
       timelineRows.sort((a, b) => new Date(b.date) - new Date(a.date));
       
       const tbody = document.getElementById('data-timeline');
