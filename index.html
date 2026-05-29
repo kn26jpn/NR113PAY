@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>家計・資産管理統合システム</title>
+  <style>
+    /* 配色ベース: https://kn26jpn.github.io/lt-fare-calculator/ の再現 */
+    :root {
+      --bg-color: #0b111e;
+      --card-bg: #151f32;
+      --input-bg: #1e2d4a;
+      --text-color: #ffffff;
+      --text-muted: #8fa0dd;
+      --primary: #00e676; /* 鮮やかなグリーン */
+      --secondary: #00b0ff; /* シアン */
+      --accent: #ff3d00; /* オレンジ/レッド */
+      --border-color: #263b5e;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      padding: 15px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 15px;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 20px;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      color: var(--secondary);
+      font-weight: 700;
+    }
+
+    /* メインレイアウト（レスポンシブGrid） */
+    .app-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+      flex-grow: 1;
+    }
+
+    @media (min-width: 992px) {
+      .app-container {
+        grid-template-columns: 1fr 2fr;
+      }
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+
+    .card h2 {
+      font-size: 1.2rem;
+      margin-bottom: 15px;
+      color: var(--primary);
+      border-left: 4px solid var(--primary);
+      padding-left: 8px;
+    }
+
+    /* フォーム設計 */
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 12px;
+      background-color: var(--input-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-color);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--secondary);
+    }
+
+    /* タブ切り替えボタン */
+    .tab-container {
+      display: flex;
+      margin-bottom: 15px;
+      background-color: var(--input-bg);
+      border-radius: 6px;
+      padding: 3px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      cursor: pointer;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+
+    .tab-btn.active {
+      background-color: var(--card-bg);
+      color: var(--primary);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    button.submit-btn {
+      width: 100%;
+      padding: 14px;
+      background-color: var(--primary);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      margin-top: 10px;
+    }
+
+    button.submit-btn:hover {
+      opacity: 0.9;
+    }
+
+    /* ダッシュボード・集計表示 */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .summary-box {
+      background-color: var(--input-bg);
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+      border: 1px solid var(--border-color);
+    }
+
+    .summary-box .title {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+    }
+
+    .summary-box .value {
+      font-size: 1.3rem;
+      font-weight: bold;
+    }
+
+    .value.expense { color: var(--accent); }
+    .value.income { color: var(--primary); }
+    .value.total { color: var(--secondary); }
+
+    /* データテーブル（レスポンシブ対応） */
+    .table-container {
+      overflow-x: auto;
+      margin-top: 15px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.9rem;
+      min-width: 500px;
+    }
+
+    th, td {
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    th {
+      background-color: var(--input-bg);
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    tr:hover {
+      background-color: rgba(255,255,255,0.02);
+    }
+
+    /* ローディング演出 */
+    .loading-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(11, 17, 30, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      font-size: 1.2rem;
+      color: var(--secondary);
+      font-weight: bold;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <div id="loading" class="loading-overlay">データを読み込み中...</div>
+
+  <header>
+    <h1>家計・資産管理</h1>
+    <div id="current-month" style="font-weight: bold; color: var(--text-muted);"></div>
+  </header>
+
+  <div class="app-container">
+    
+    <div class="card">
+      <h2>データ入力</h2>
+      <div class="tab-container">
+        <button class="tab-btn active" onclick="switchTab('expense')">その他支出</button>
+        <button class="tab-btn" onclick="switchTab('income')">収入</button>
+      </div>
+
+      <form id="main-form" onsubmit="handleSubmit(event)">
+        <div class="form-group">
+          <label for="date">日付</label>
+          <input type="date" id="date" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="member">メンバー</label>
+            <select id="member" required>
+              </select>
+          </div>
+          <div class="form-group">
+            <label for="category">カテゴリー</label>
+            <select id="category" required>
+              </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label id="method-label" for="method">決済方法</label>
+          <select id="method" required>
+            </select>
+        </div>
+
+        <div class="form-group">
+          <label for="amount">金額（円）</label>
+          <input type="number" id="amount" min="1" placeholder="金額を入力" required>
+        </div>
+
+        <div class="form-group">
+          <label for="details">詳細備考</label>
+          <textarea id="details" rows="2" placeholder="店名やメモなど"></textarea>
+        </div>
+
+        <button type="submit" class="submit-btn">データを送信</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>今月の状況 (月別概要)</h2>
+      <div class="summary-grid">
+        <div class="summary-box">
+          <div class="title">総収入 (Web入力)</div>
+          <div class="value income" id="sum-income">¥0</div>
+        </div>
+        <div class="summary-box">
+          <div class="title">クレカ支出 (直入力)</div>
+          <div class="value expense" id="sum-card">¥0</div>
+        </div>
+        <div class="summary-box">
+          <div class="title">その他支出 (Web入力)</div>
+          <div class="value expense" id="sum-other">¥0</div>
+        </div>
+      </div>
+
+      <h2>直近のデータ履歴</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>日付</th>
+              <th>メンバー</th>
+              <th>種別/方法</th>
+              <th>カテゴリー</th>
+              <th>金額</th>
+              <th>詳細</th>
+            </tr>
+          </thead>
+          <tbody id="data-timeline">
+            </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ⚠️重要：ここにデプロイしたGASの「ウェブアプリURL」を貼り付けてください
+    const GAS_URL = "YOUR_GAS_WEBAPP_URL"; 
+
+    let currentType = 'expense'; // expense or income
+    let masterData = { members: [], categories: [] };
+
+    // 決済・受取方法の選択肢定義
+    const methods = {
+      expense: ['現金', 'QRコード決済', 'その他'],
+      income: ['現金', 'ポイント']
+    };
+
+    // 初期化処理
+    window.addEventListener('DOMContentLoaded', () => {
+      // 本日の日付をデフォルトセット
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('date').value = today;
+      
+      const now = new Date();
+      document.getElementById('current-month').innerText = `${now.getFullYear()}年 ${now.getMonth() + 1}月`;
+
+      updateMethodOptions();
+      fetchInitialData();
+    });
+
+    // タブ切り替え
+    function switchTab(type) {
+      currentType = type;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      
+      const methodLabel = document.getElementById('method-label');
+      methodLabel.innerText = type === 'expense' ? '決済方法' : '受取方法';
+
+      updateMethodOptions();
+    }
+
+    function updateMethodOptions() {
+      const methodSelect = document.getElementById('method');
+      methodSelect.innerHTML = '';
+      methods[currentType].forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.innerText = m;
+        methodSelect.appendChild(opt);
+      });
+    }
+
+    // GASから初期データを一括取得
+    async function fetchInitialData() {
+      if(GAS_URL === "YOUR_GAS_WEBAPP_URL") {
+        document.getElementById('loading').innerText = "エラー：GASのURLが未設定です。";
+        return;
+      }
+      try {
+        const response = await fetch(GAS_URL, { method: 'GET' });
+        const res = await response.json();
+        
+        if (res.status === 'success') {
+          masterData.members = res.members;
+          masterData.categories = res.categories;
+          
+          // セレクトボックスの動的生成（情報流出防止対策）
+          renderSelect('member', res.members);
+          renderSelect('category', res.categories);
+
+          // 集計とタイムラインの反映
+          renderDashboard(res);
+          
+          document.getElementById('loading').classList.add('hidden');
+        } else {
+          alert('データ取得エラー: ' + res.message);
+        }
+      } catch (error) {
+        console.error(error);
+        alert('GASへの接続に失敗しました。CORS設定またはURLを確認してください。');
+      }
+    }
+
+    function renderSelect(id, array) {
+      const select = document.getElementById(id);
+      select.innerHTML = '';
+      array.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item;
+        opt.innerText = item;
+        select.appendChild(opt);
+      });
+    }
+
+    // ダッシュボード集計とタイムライン描画
+    function renderDashboard(data) {
+      let sumCard = 0, sumOther = 0, sumIncome = 0;
+      let timelineRows = [];
+
+      // クレカ集計（今月分のみ簡易フィルター等、拡張可能。ここでは全合計を算出）
+      data.cardData.forEach(row => {
+        sumCard += Number(row[3]) || 0; // 4列目を金額と仮定
+        timelineRows.push({ date: row[0], member: row[1], type: 'クレカ', cat: row[2], amount: row[3], desc: row[4] || '' });
+      });
+
+      // その他支出集静
+      data.otherExpenseData.forEach(row => {
+        sumOther += Number(row[4]) || 0;
+        timelineRows.push({ date: row[0], member: row[1], type: row[3], cat: row[2], amount: row[4], desc: row[5] || '' });
+      });
+
+      // 収入集計
+      data.incomeData.forEach(row => {
+        sumIncome += Number(row[4]) || 0;
+        timelineRows.push({ date: row[0], member: row[1], type: row[3], cat: row[2], amount: row[4], desc: row[5] || '', isIncome: true });
+      });
+
+      // 数値反映
+      document.getElementById('sum-card').innerText = `¥${sumCard.toLocaleString()}`;
+      document.getElementById('sum-other').innerText = `¥${sumOther.toLocaleString()}`;
+      document.getElementById('sum-income').innerText = `¥${sumIncome.toLocaleString()}`;
+
+      // タイムラインを日付の新しい順にソートして描画
+      timelineRows.sort((a, b) => new Date(b.date) - new Date(a.date));
+      
+      const tbody = document.getElementById('data-timeline');
+      tbody.innerHTML = '';
+      
+      // 直近20件を表示
+      timelineRows.slice(0, 20).forEach(item => {
+        const tr = document.createElement('tr');
+        const formattedDate = item.date ? item.date.split('T')[0] : '';
+        const amtColor = item.isIncome ? 'var(--primary)' : 'var(--text-color)';
+        const amtSign = item.isIncome ? '+' : '';
+
+        tr.innerHTML = `
+          <td>${formattedDate}</td>
+          <td>${item.member}</td>
+          <td><span style="color:var(--text-muted); font-size:0.8rem;">${item.type}</span></td>
+          <td>${item.cat}</td>
+          <td style="color:${amtColor}; font-weight:bold;">${amtSign}¥${Number(item.amount).toLocaleString()}</td>
+          <td style="font-size:0.8rem; color:var(--text-muted);">${item.desc}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // フォーム送信処理（データ書き込み）
+    async function handleSubmit(event) {
+      event.preventDefault();
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('loading').innerText = "データを送信中...";
+
+      const payload = {
+        type: currentType,
+        date: document.getElementById('date').value,
+        member: document.getElementById('member').value,
+        category: document.getElementById('category').value,
+        method: document.getElementById('method').value,
+        amount: document.getElementById('amount').value,
+        details: document.getElementById('details').value
+      };
+
+      try {
+        const response = await fetch(GAS_URL, {
+          method: 'POST',
+          redirect: 'follow', // 💡仕様2: リダイレクトを追従
+          body: JSON.stringify(payload),
+          headers: {
+            'Content-Type': 'text/plain' // GASでCORSプレフライトを回避するための標準テクニック
+          }
+        });
+
+        const res = await response.json();
+        if (res.status === 'success') {
+          // フォームをリセット（日付以外）
+          document.getElementById('amount').value = '';
+          document.getElementById('details').value = '';
+          // データを再リロードして画面更新
+          document.getElementById('loading').innerText = "最新データを取得中...";
+          await fetchInitialData();
+        } else {
+          alert('書き込みエラー: ' + res.message);
+          document.getElementById('loading').classList.add('hidden');
+        }
+      } catch (error) {
+        console.error(error);
+        alert('送信に失敗しました。');
+        document.getElementById('loading').classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
