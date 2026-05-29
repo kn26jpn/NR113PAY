@@ -200,7 +200,7 @@
       border-collapse: collapse;
       text-align: left;
       font-size: 0.9rem;
-      min-width: 500px;
+      min-width: 600px;
     }
 
     th, td {
@@ -315,10 +315,10 @@
             <tr>
               <th>日付</th>
               <th>メンバー</th>
-              <th>種別/方法</th>
+              <th>利用カード/方法</th>
               <th>カテゴリー</th>
+              <th>ご利用内容/詳細</th>
               <th>金額</th>
-              <th>詳細</th>
             </tr>
           </thead>
           <tbody id="data-timeline">
@@ -342,9 +342,16 @@
       income: ['現金', 'ポイント']
     };
 
+    // 金額文字列を数値に安全に変換する関数（カンマやスペースを自動クリア）
+    function parseAmount(val) {
+      if (typeof val === 'number') return val;
+      if (!val) return 0;
+      const cleanVal = String(val).replace(/,/g, '').trim();
+      return Number(cleanVal) || 0;
+    }
+
     // 初期化処理
     window.addEventListener('DOMContentLoaded', () => {
-      // 本日の日付をデフォルトセット
       const today = new Date().toISOString().split('T')[0];
       document.getElementById('date').value = today;
       
@@ -392,11 +399,9 @@
           masterData.members = res.members;
           masterData.categories = res.categories;
           
-          // セレクトボックスの動的生成（情報流出防止対策）
           renderSelect('member', res.members);
           renderSelect('category', res.categories);
 
-          // 集計とタイムラインの反映
           renderDashboard(res);
           
           document.getElementById('loading').classList.add('hidden');
@@ -425,22 +430,35 @@
       let sumCard = 0, sumOther = 0, sumIncome = 0;
       let timelineRows = [];
 
-      // クレカ集計（今月分のみ簡易フィルター等、拡張可能。ここでは全合計を算出）
+      // 💡クレジットカードデータの解析（新並び順に完全追従）
+      // 列構成: 0:ご利用日, 1:カテゴリー, 2:ご利用内容, 3:利用カード, 4:支払者, 5:金額
       data.cardData.forEach(row => {
-        sumCard += Number(row[3]) || 0; // 4列目を金額と仮定
-        timelineRows.push({ date: row[0], member: row[1], type: 'クレカ', cat: row[2], amount: row[3], desc: row[4] || '' });
+        const parsedAmt = parseAmount(row[5]);
+        sumCard += parsedAmt;
+        timelineRows.push({ 
+          date: row[0], 
+          member: row[4], // 支払者
+          type: row[3] || 'クレカ', // 利用カード名
+          cat: row[1], // カテゴリー
+          amount: parsedAmt, 
+          desc: row[2] || '' // ご利用内容
+        });
       });
 
-      // その他支出集静
+      // その他支出集計
+      // 列構成: 日付, メンバー, カテゴリー, 決済方法, 金額, 詳細
       data.otherExpenseData.forEach(row => {
-        sumOther += Number(row[4]) || 0;
-        timelineRows.push({ date: row[0], member: row[1], type: row[3], cat: row[2], amount: row[4], desc: row[5] || '' });
+        const parsedAmt = parseAmount(row[4]);
+        sumOther += parsedAmt;
+        timelineRows.push({ date: row[0], member: row[1], type: row[3], cat: row[2], amount: parsedAmt, desc: row[5] || '' });
       });
 
       // 収入集計
+      // 列構成: 日付, メンバー, カテゴリー, 受取方法, 金額, 詳細
       data.incomeData.forEach(row => {
-        sumIncome += Number(row[4]) || 0;
-        timelineRows.push({ date: row[0], member: row[1], type: row[3], cat: row[2], amount: row[4], desc: row[5] || '', isIncome: true });
+        const parsedAmt = parseAmount(row[4]);
+        sumIncome += parsedAmt;
+        timelineRows.push({ date: row[0], member: row[1], type: row[3], cat: row[2], amount: parsedAmt, desc: row[5] || '', isIncome: true });
       });
 
       // 数値反映
@@ -448,7 +466,7 @@
       document.getElementById('sum-other').innerText = `¥${sumOther.toLocaleString()}`;
       document.getElementById('sum-income').innerText = `¥${sumIncome.toLocaleString()}`;
 
-      // タイムラインを日付の新しい順にソートして描画
+      // タイムラインを日付の新しい順にソート
       timelineRows.sort((a, b) => new Date(b.date) - new Date(a.date));
       
       const tbody = document.getElementById('data-timeline');
@@ -466,8 +484,8 @@
           <td>${item.member}</td>
           <td><span style="color:var(--text-muted); font-size:0.8rem;">${item.type}</span></td>
           <td>${item.cat}</td>
-          <td style="color:${amtColor}; font-weight:bold;">${amtSign}¥${Number(item.amount).toLocaleString()}</td>
-          <td style="font-size:0.8rem; color:var(--text-muted);">${item.desc}</td>
+          <td style="font-size:0.85rem; color:var(--text-muted);">${item.desc}</td>
+          <td style="color:${amtColor}; font-weight:bold; text-align: right;">${amtSign}¥${item.amount.toLocaleString()}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -492,19 +510,17 @@
       try {
         const response = await fetch(GAS_URL, {
           method: 'POST',
-          redirect: 'follow', // 💡仕様2: リダイレクトを追従
+          redirect: 'follow',
           body: JSON.stringify(payload),
           headers: {
-            'Content-Type': 'text/plain' // GASでCORSプレフライトを回避するための標準テクニック
+            'Content-Type': 'text/plain'
           }
         });
 
         const res = await response.json();
         if (res.status === 'success') {
-          // フォームをリセット（日付以外）
           document.getElementById('amount').value = '';
           document.getElementById('details').value = '';
-          // データを再リロードして画面更新
           document.getElementById('loading').innerText = "最新データを取得中...";
           await fetchInitialData();
         } else {
